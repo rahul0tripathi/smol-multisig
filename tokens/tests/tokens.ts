@@ -113,4 +113,79 @@ describe("tokens", () => {
       console.log((error as anchor.ProgramError).toString());
     }
   });
+  it("should fail when non-authority tries to mint", async () => {
+    const nonce = 0;
+    const signer = (program.provider as anchor.AnchorProvider).wallet;
+    const validAuthority = anchor.web3.Keypair.generate();
+    const invalidAuthority = anchor.web3.Keypair.generate();
+
+    // Airdrop to both authorities
+    const signatures = await Promise.all([
+      provider.connection.requestAirdrop(
+        validAuthority.publicKey,
+        2 * anchor.web3.LAMPORTS_PER_SOL
+      ),
+      provider.connection.requestAirdrop(
+        invalidAuthority.publicKey,
+        2 * anchor.web3.LAMPORTS_PER_SOL
+      ),
+    ]);
+    await Promise.all(
+      signatures.map((sig) => provider.connection.confirmTransaction(sig))
+    );
+
+    // Create token mint with valid authority
+    const [tokenPDA] = await PublicKey.findProgramAddressSync(
+      [
+        anchor.utils.bytes.utf8.encode("token-mint"),
+        validAuthority.publicKey.toBuffer(),
+        Buffer.from([nonce]),
+      ],
+      program.programId
+    );
+
+    // Create the mint
+    await program.methods
+      .createTokenMint(
+        new anchor.BN(100000000000),
+        6,
+        "TEST",
+        "TEST TOKEN",
+        nonce
+      )
+      .accounts({
+        creator: signer.publicKey,
+        authority: validAuthority.publicKey,
+        mintAccount: tokenPDA,
+      })
+      .rpc();
+
+    // Try to mint with invalid authority
+    const [tokenAccountPDA] = await PublicKey.findProgramAddressSync(
+      [
+        anchor.utils.bytes.utf8.encode("token-account"),
+        tokenPDA.toBuffer(),
+        signer.publicKey.toBuffer(),
+      ],
+      program.programId
+    );
+
+    try {
+      await program.methods
+        .mintTokens(signer.publicKey, new anchor.BN(1000000))
+        .accounts({
+          mintAccount: tokenPDA,
+          authority: invalidAuthority.publicKey,
+          tokenAccount: tokenAccountPDA,
+        })
+        .signers([invalidAuthority])
+        .rpc();
+
+      console.log("Should have failed with unauthorized authority");
+    } catch (error) {
+      console.log(error);
+      console.log("✅ Correctly failed with unauthorized authority");
+      console.log(error.toString().includes("Constraint"));
+    }
+  });
 });

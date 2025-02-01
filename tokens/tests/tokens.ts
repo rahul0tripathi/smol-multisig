@@ -17,10 +17,15 @@ describe("tokens", () => {
     const signer = (program.provider as anchor.AnchorProvider).wallet;
     const randomAuthority = anchor.web3.Keypair.generate();
 
+    const signature = await provider.connection.requestAirdrop(
+      randomAuthority.publicKey,
+      2 * anchor.web3.LAMPORTS_PER_SOL
+    );
+    await provider.connection.confirmTransaction(signature);
+
     const [tokenPDA, bump] = await PublicKey.findProgramAddressSync(
       [
         anchor.utils.bytes.utf8.encode("token-mint"),
-        signer.publicKey.toBuffer(),
         randomAuthority.publicKey.toBuffer(),
         Buffer.from([nonce]),
       ],
@@ -57,7 +62,52 @@ describe("tokens", () => {
         tokenMint.initialized,
         tokenMint.supply,
         tokenMint.symbol,
-        tokenMint.nonce
+        tokenMint.nonce,
+        tokenMint.mintedSupply
+      );
+
+      const [tokenAccountPDA, bumpTokenAccountPDA] =
+        await PublicKey.findProgramAddressSync(
+          [
+            anchor.utils.bytes.utf8.encode("token-account"),
+            tokenPDA.toBuffer(),
+            signer.publicKey.toBuffer(),
+          ],
+          program.programId
+        );
+
+      console.log(
+        "derived token account",
+        tokenAccountPDA.toString(),
+        bumpTokenAccountPDA
+      );
+      const mintTx = await program.methods
+        .mintTokens(signer.publicKey, new anchor.BN(1000000))
+        .accounts({
+          mintAccount: tokenPDA,
+          authority: randomAuthority.publicKey,
+          tokenAccount: tokenAccountPDA,
+          systemProgram: anchor.web3.SystemProgram.programId,
+        })
+        .signers([randomAuthority])
+        .rpc({ commitment: "confirmed" });
+
+      console.log("Mint transaction signature:", mintTx);
+
+      let tokenAccount = await program.account.tokenAccount.fetch(
+        tokenAccountPDA
+      );
+      console.log(tokenAccount.owner.toString(), tokenAccount.amount);
+
+      tokenMint = await program.account.tokenMint.fetch(tokenPDA);
+
+      console.log(
+        tokenMint.authority.toString(),
+        tokenMint.initialized,
+        tokenMint.supply,
+        tokenMint.symbol,
+        tokenMint.nonce,
+        tokenMint.mintedSupply
       );
     } catch (error) {
       console.log((error as anchor.ProgramError).toString());

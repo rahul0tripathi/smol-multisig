@@ -65,6 +65,33 @@ pub mod tokens {
         ctx.accounts.mint_account.minted_supply = new_supply;
         return Ok(());
     }
+
+    pub fn transfer(ctx: Context<TransferTo>, receiver: Pubkey, amount: u64) -> Result<()> {
+        require!(
+            ctx.accounts.token_account_receiver.state != AccountState::Frozen ||
+                ctx.accounts.token_account_sender.state != AccountState::Frozen,
+            TokenErrors::TokenAccountFrozen
+        );
+
+        ctx.accounts.token_account_sender.amount = ctx.accounts.token_account_sender.amount
+            .checked_sub(amount)
+            .ok_or(TokenErrors::TransferSubError)?;
+
+        if ctx.accounts.token_account_receiver.state == AccountState::Uninitialized {
+            ctx.accounts.token_account_receiver.mint =
+                *ctx.accounts.mint_account.to_account_info().key;
+            ctx.accounts.token_account_receiver.amount = amount;
+            ctx.accounts.token_account_receiver.owner = receiver;
+            ctx.accounts.token_account_receiver.state = AccountState::Initialized;
+            ctx.accounts.token_account_receiver.bump = ctx.bumps.token_account_receiver;
+        } else {
+            ctx.accounts.token_account_receiver.amount = ctx.accounts.token_account_receiver.amount
+                .checked_add(amount)
+                .ok_or(TokenErrors::Overflow)?;
+        }
+
+        return Ok(());
+    }
 }
 
 #[account]
@@ -112,6 +139,44 @@ pub enum TokenErrors {
     TokenAccountFrozen,
     Overflow,
     ExceedsSupply,
+    TransferSubError,
+}
+
+#[derive(Accounts)]
+#[instruction(receiver: Pubkey)]
+pub struct TransferTo<'info> {
+    #[account(mut)]
+    sender: Signer<'info>,
+    #[account(
+        mut,
+        seeds=[
+            b"token-mint",
+            mint_account.authority.key().as_ref(),
+            &[mint_account.nonce],
+        ],
+        bump=mint_account.bump,
+    )]
+    mint_account: Account<'info, TokenMint>,
+
+    #[account(
+        mut,
+        seeds = [b"token-account", mint_account.key().as_ref(), sender.key().as_ref()],
+        bump = token_account_sender.bump,
+        constraint = token_account_sender.owner == sender.key()
+    )]
+    token_account_sender: Account<'info, TokenAccount>,
+
+    #[account(
+        init_if_needed,
+        payer = sender,
+        space = 8 + 32 + 32 + 8 + 1 + 1,
+        seeds = [b"token-account", mint_account.key().as_ref(), receiver.as_ref()],
+        bump,
+        constraint = token_account_receiver.owner == receiver ||
+        token_account_receiver.state == AccountState::Uninitialized
+    )]
+    token_account_receiver: Account<'info, TokenAccount>,
+    system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]

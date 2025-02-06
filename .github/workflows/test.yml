@@ -22,5 +22,6 @@ jobs:
       - name: Run Anchor Tests
         run: |
           cd tokens
+          yarn
           anchor test
         shell: bash

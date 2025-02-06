@@ -152,6 +152,7 @@ pub enum TokenErrors {
     ExceedsSupply,
     TransferSubError,
     InvalidOwner,
+    InvalidTokenAccount,
 }
 
 #[derive(Accounts)]
@@ -219,7 +220,7 @@ pub struct CreateTokenMint<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(receiver: Pubkey)]
+#[instruction(target: Pubkey,amount: u64)]
 pub struct MintTokensToAddress<'info> {
     #[account(mut)]
     authority: Signer<'info>,
@@ -232,7 +233,7 @@ pub struct MintTokensToAddress<'info> {
             &[mint_account.nonce],
         ],
         bump=mint_account.bump,
-        constraint = mint_account.authority == authority.key(),
+       constraint = mint_account.authority == authority.key(),
     )]
     mint_account: Account<'info, TokenMint>,
 
@@ -243,9 +244,9 @@ pub struct MintTokensToAddress<'info> {
         init_if_needed,
         payer = payer,
         space = 8 + 32 + 32 + 8 + 1 + 1,
-        seeds = [b"token-account", mint_account.key().as_ref(), receiver.as_ref()],
+        seeds = [b"token-account", mint_account.key().as_ref(), target.key().as_ref()],
         bump,
-        constraint = token_account.owner == receiver ||
+        constraint = token_account.owner == target ||
         token_account.state == AccountState::Uninitialized
     )]
     token_account: Account<'info, TokenAccount>,

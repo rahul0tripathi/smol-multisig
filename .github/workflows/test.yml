@@ -1,0 +1,22 @@
+name: test
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  anchor-tests:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - uses: metadaoproject/anchor-test@v2
+      with:
+        anchor-version: '0.30.1'
+        solana-cli-version: '2.0.25'
+        node-version: '20.14.1'
+    - name: Run tests in tokens directory
+      run: |
+        cd tokens
+        anchor test

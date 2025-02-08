@@ -25,5 +25,6 @@ jobs:
           yarn
           anchor test
           cd ../stateless_multisig
+          yarn
           anchor test
         shell: bash

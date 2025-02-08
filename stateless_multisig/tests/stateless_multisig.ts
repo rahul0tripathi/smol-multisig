@@ -8,6 +8,7 @@ import {
   TransactionInstruction,
 } from "@solana/web3.js";
 import { expect } from "chai";
+import { BatchEd25519Signer } from "../utils/ed25519";
 
 describe("stateless_multisig", () => {
   const provider = anchor.AnchorProvider.env();
@@ -71,6 +72,20 @@ describe("stateless_multisig", () => {
     const connection = provider.connection;
     await airdropSol(multisigPda);
 
+    const ed25519Ix =
+      BatchEd25519Signer.signAndCreateVerifySignaturesInstruction([
+        {
+          signer: owner2,
+          message: Buffer.from("hello-world"),
+        },
+        {
+          signer: owner3,
+          message: Buffer.from("hello-world"),
+        },
+      ]);
+
+    console.log(BatchEd25519Signer.parseBuffer(ed25519Ix.data));
+
     const rentExemption =
       await provider.connection.getMinimumBalanceForRentExemption(0);
 
@@ -106,7 +121,7 @@ describe("stateless_multisig", () => {
       programId: SystemProgram.programId,
       accounts: accounts,
       data: transferIx.data,
-      signers: [],
+      signers: [owner2.publicKey, owner3.publicKey],
       nonce: new anchor.BN(0),
     };
 
@@ -133,6 +148,7 @@ describe("stateless_multisig", () => {
         payer: payer.publicKey,
       })
       .remainingAccounts(remainingAccounts)
+      .preInstructions([ed25519Ix])
       .signers([])
       .rpc({ commitment: "confirmed" });
 

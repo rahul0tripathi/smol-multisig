@@ -1,6 +1,10 @@
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program;
 use anchor_lang::solana_program::instruction::Instruction;
+use anchor_lang::solana_program::sysvar::instructions::{get_instruction_relative, ID as IX_ID};
+
+pub mod errors;
+pub mod verifier;
 
 declare_id!("8EKj21isKqgxYfMQybmGWHRCn62F5thMxeaHy3A93G6L");
 
@@ -13,10 +17,13 @@ pub mod stateless_multisig {
         signers: Vec<Pubkey>,
         threshold: u8,
     ) -> Result<()> {
-        require!(!signers.is_empty(), MultiSigErrors::InvalidOwnersLen);
+        require!(
+            !signers.is_empty(),
+            errors::MultiSigErrors::InvalidOwnersLen
+        );
         require!(
             threshold > 0 && threshold <= signers.len() as u8,
-            MultiSigErrors::InvalidThreshold
+            errors::MultiSigErrors::InvalidThreshold
         );
 
         // Find PDA that will act as the actual multisig signer
@@ -40,9 +47,17 @@ pub mod stateless_multisig {
         require_eq!(
             params.nonce,
             ctx.accounts.config.nonce,
-            MultiSigErrors::ErrNonceTooOld
+            errors::MultiSigErrors::ErrNonceTooOld
         );
 
+        msg!("getting instruction");
+
+        // the instruction before execute should always be the call to the Ed25519 precompile
+        let ix: Instruction = get_instruction_relative(-1, &ctx.accounts.ix_sysvar)?;
+
+        verifier::verify(&ix, params.signers, b"hello-world")?;
+
+        msg!("verified sigs");
         // Increment nonce
         ctx.accounts.config.nonce += 1;
 
@@ -96,18 +111,6 @@ pub struct ExecuteMultiSigTx {
     pub nonce: u64,
 }
 
-#[error_code]
-pub enum MultiSigErrors {
-    #[msg("given nonce is older than the existing nonce")]
-    ErrNonceTooOld,
-    #[msg("not enough signers to execute transaction")]
-    NotEnoughSigners,
-    #[msg("owners length must be non zero")]
-    InvalidOwnersLen,
-    #[msg("threshold must be greater than 0 and less than or equal to owner count")]
-    InvalidThreshold,
-}
-
 #[account]
 pub struct MultiSigConfig {
     pub owners: Vec<Pubkey>,
@@ -153,4 +156,10 @@ pub struct ExecuteMultiSigTxCtx<'info> {
         bump = config.pda_bump,
     )]
     pub multisig_pda: UncheckedAccount<'info>,
+    /// CHECK: The address check is needed because otherwise
+    /// the supplied Sysvar could be anything else.
+    /// The Instruction Sysvar has not been implemented
+    /// in the Anchor framework yet, so this is the safe approach.
+    #[account(address = IX_ID)]
+    pub ix_sysvar: AccountInfo<'info>,
 }

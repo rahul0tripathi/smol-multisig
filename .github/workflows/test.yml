@@ -24,4 +24,6 @@ jobs:
           cd tokens
           yarn
           anchor test
+          cd ../stateless_multisig
+          anchor test
         shell: bash

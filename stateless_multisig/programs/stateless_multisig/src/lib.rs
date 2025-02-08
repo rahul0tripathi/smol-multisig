@@ -1,6 +1,9 @@
+use std::io::Read;
+
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program;
 use anchor_lang::solana_program::instruction::Instruction;
+use anchor_lang::solana_program::keccak;
 use anchor_lang::solana_program::sysvar::instructions::{get_instruction_relative, ID as IX_ID};
 
 pub mod errors;
@@ -17,6 +20,7 @@ pub mod stateless_multisig {
         signers: Vec<Pubkey>,
         threshold: u8,
     ) -> Result<()> {
+        unique_signers(&signers)?;
         require!(
             !signers.is_empty(),
             errors::MultiSigErrors::InvalidOwnersLen
@@ -43,7 +47,14 @@ pub mod stateless_multisig {
     }
 
     pub fn execute(ctx: Context<ExecuteMultiSigTxCtx>, params: ExecuteMultiSigTx) -> Result<()> {
-        // Verify nonce to prevent replay
+        // check signers are unique and above threshold
+        unique_signers(&params.signers)?;
+        require_gte!(
+            params.signers.len(),
+            ctx.accounts.config.threshold as usize,
+            errors::MultiSigErrors::ThresholdNotMet
+        );
+        // verify nonce to prevent replay
         require_eq!(
             params.nonce,
             ctx.accounts.config.nonce,
@@ -55,13 +66,20 @@ pub mod stateless_multisig {
         // the instruction before execute should always be the call to the Ed25519 precompile
         let ix: Instruction = get_instruction_relative(-1, &ctx.accounts.ix_sysvar)?;
 
-        verifier::verify(&ix, params.signers, b"hello-world")?;
+        let expected_hash = create_multi_sig_tx_hash(
+            ctx.accounts.multisig_pda.key(),
+            ctx.accounts.config.nonce,
+            params.accounts.clone(),
+            &params.data,
+            params.program_id,
+        );
+        msg!("expected hash {:02x?}", expected_hash);
+        verifier::verify(&ix, params.signers, expected_hash)?;
 
         msg!("verified sigs");
-        // Increment nonce
+        // increment nonce
         ctx.accounts.config.nonce += 1;
 
-        // Create instruction accounts
         let accounts: Vec<AccountMeta> = params
             .accounts
             .iter()
@@ -79,7 +97,7 @@ pub mod stateless_multisig {
         };
 
         let config_key = ctx.accounts.config.key();
-        // Use the stored PDA seeds for the actual multisig
+        // use the stored PDA seeds for the actual multisig
         let multisig_seeds = &[
             b"multisig-signer",
             config_key.as_ref(),
@@ -95,7 +113,43 @@ pub mod stateless_multisig {
     }
 }
 
-#[derive(AnchorDeserialize, AnchorSerialize)]
+fn unique_signers(signers: &[Pubkey]) -> Result<()> {
+    for (i, signer) in signers.iter().enumerate() {
+        require!(
+            !signers.iter().skip(i + 1).any(|item| item == signer),
+            errors::MultiSigErrors::DuplicateSigner
+        )
+    }
+    Ok(())
+}
+
+fn create_multi_sig_tx_hash(
+    multisig_pda: Pubkey,
+    nonce: u64,
+    accounts: Vec<TransactionAccount>,
+    data: &[u8],
+    program: Pubkey,
+) -> [u8; 32] {
+    let mut payload = Vec::new();
+
+    payload.extend_from_slice(&multisig_pda.to_bytes());
+
+    payload.extend_from_slice(&nonce.to_le_bytes());
+
+    for account in accounts.iter() {
+        payload.extend_from_slice(&account.pubkey.to_bytes());
+        payload.push(account.is_signer as u8);
+        payload.push(account.is_writable as u8);
+    }
+
+    payload.extend_from_slice(&program.to_bytes());
+
+    payload.extend_from_slice(data);
+
+    keccak::hash(&payload).to_bytes()
+}
+
+#[derive(AnchorDeserialize, AnchorSerialize, Clone, Copy)]
 pub struct TransactionAccount {
     pub pubkey: Pubkey,
     pub is_signer: bool,

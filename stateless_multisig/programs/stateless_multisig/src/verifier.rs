@@ -9,8 +9,9 @@ const SIGNATURE_LEN: usize = 64;
 const PUBKEY_LEN: usize = 32;
 const OFFSET_METADATA_SIZE: usize = 14;
 const INSTRUCTION_INFO_SIZE: usize = 2;
+const KECCAK_LEN: usize = 32;
 
-pub fn verify(ix: &Instruction, signers: Vec<Pubkey>, multi_sig_hash: &[u8]) -> Result<()> {
+pub fn verify(ix: &Instruction, signers: Vec<Pubkey>, multi_sig_hash: [u8; 32]) -> Result<()> {
     if ix.program_id != ED25519_ID || ix.accounts.len() != 0 {
         return Err(MultiSigErrors::InvalidEd25519Instruction.into());
     }
@@ -36,11 +37,11 @@ pub fn verify(ix: &Instruction, signers: Vec<Pubkey>, multi_sig_hash: &[u8]) -> 
             MultiSigErrors::InvalidMessageSigner
         );
 
-        let msg_offset = messages_start + (i * multi_sig_hash.len());
-        let ix_msg_bytes = &ix.data[msg_offset..msg_offset + multi_sig_hash.len()];
+        let msg_offset = messages_start + (i * KECCAK_LEN);
+        let ix_msg_bytes = &ix.data[msg_offset..msg_offset + KECCAK_LEN];
 
         require!(
-            ix_msg_bytes.eq(multi_sig_hash),
+            ix_msg_bytes.eq(&multi_sig_hash),
             MultiSigErrors::InvalidMessage
         );
     }

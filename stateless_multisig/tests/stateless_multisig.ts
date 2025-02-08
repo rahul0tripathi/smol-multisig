@@ -9,8 +9,55 @@ import {
 } from "@solana/web3.js";
 import { expect } from "chai";
 import { BatchEd25519Signer } from "../utils/ed25519";
+import { keccak_256 } from "js-sha3";
 
 describe("stateless_multisig", () => {
+  function numberToLEBytes(
+    num: number | anchor.BN,
+    length: number = 8
+  ): Buffer {
+    const buf = Buffer.alloc(length);
+    if (num instanceof anchor.BN) {
+      buf.writeBigUInt64LE(BigInt(num.toString()));
+    } else {
+      buf.writeBigUInt64LE(BigInt(num));
+    }
+    return buf;
+  }
+  interface TransactionAccount {
+    pubkey: PublicKey;
+    isSigner: boolean;
+    isWritable: boolean;
+  }
+
+  function createMultiSigTxHash(
+    multisigPda: PublicKey,
+    nonce: anchor.BN,
+    accounts: TransactionAccount[],
+    data: Buffer,
+    program: PublicKey
+  ): Buffer {
+    const payload: Buffer[] = [];
+
+    payload.push(Buffer.from(multisigPda.toBytes()));
+
+    payload.push(numberToLEBytes(nonce));
+
+    for (const account of accounts) {
+      payload.push(Buffer.from(account.pubkey.toBytes()));
+      payload.push(Buffer.from([account.isSigner ? 1 : 0]));
+      payload.push(Buffer.from([account.isWritable ? 1 : 0]));
+    }
+
+    payload.push(Buffer.from(program.toBytes()));
+
+    payload.push(data);
+
+    const concatenatedPayload = Buffer.concat(payload);
+
+    return Buffer.from(keccak_256.arrayBuffer(concatenatedPayload));
+  }
+
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
   async function airdropSol(address: PublicKey) {
@@ -72,20 +119,6 @@ describe("stateless_multisig", () => {
     const connection = provider.connection;
     await airdropSol(multisigPda);
 
-    const ed25519Ix =
-      BatchEd25519Signer.signAndCreateVerifySignaturesInstruction([
-        {
-          signer: owner2,
-          message: Buffer.from("hello-world"),
-        },
-        {
-          signer: owner3,
-          message: Buffer.from("hello-world"),
-        },
-      ]);
-
-    console.log(BatchEd25519Signer.parseBuffer(ed25519Ix.data));
-
     const rentExemption =
       await provider.connection.getMinimumBalanceForRentExemption(0);
 
@@ -124,6 +157,30 @@ describe("stateless_multisig", () => {
       signers: [owner2.publicKey, owner3.publicKey],
       nonce: new anchor.BN(0),
     };
+
+    // Create transaction hash that owners will sign
+    const txHash = createMultiSigTxHash(
+      multisigPda,
+      executeParams.nonce,
+      executeParams.accounts,
+      Buffer.from(executeParams.data),
+      executeParams.programId
+    );
+
+    console.log(txHash);
+    const ed25519Ix =
+      BatchEd25519Signer.signAndCreateVerifySignaturesInstruction([
+        {
+          signer: owner2,
+          message: txHash,
+        },
+        {
+          signer: owner3,
+          message: txHash,
+        },
+      ]);
+
+    console.log(BatchEd25519Signer.parseBuffer(ed25519Ix.data));
 
     const remainingAccounts = [
       ...transferIx.keys,

@@ -74,12 +74,13 @@ export class BatchEd25519Signer {
     ]
     data[
         signature1
-        pubkey1
-        message1
-        ...
         ...
         signatureN
+        pubkey1
+        ...
         pubkeyN
+        message1
+        ...
         messageN
     ]
     */
@@ -94,11 +95,10 @@ export class BatchEd25519Signer {
     const publicKeysSize = params.length * PUBLIC_KEY_BYTES;
     const messagesSize = params.reduce((sum, p) => sum + p.message.length, 0);
 
-    const totalSize = headerSize + signaturesSize + publicKeysSize + messagesSize
+    const totalSize =
+      headerSize + signaturesSize + publicKeysSize + messagesSize;
     // allocate buffer
-    const instructionData = Buffer.alloc(
-      totalSize
-    );
+    const instructionData = Buffer.alloc(totalSize);
 
     // write total count
     instructionData.writeUInt8(params.length, 0);
@@ -171,10 +171,7 @@ export class BatchEd25519Signer {
     const paramsWithSignature: Ed25519SignatureVerifyParams[] = [];
     for (let item of params) {
       paramsWithSignature.push({
-        signature: BatchEd25519Signer.sign(
-          item.message,
-          item.signer.secretKey
-        ),
+        signature: BatchEd25519Signer.sign(item.message, item.signer.secretKey),
         publicKey: item.signer.publicKey.toBuffer(),
         message: item.message,
       });
@@ -214,7 +211,7 @@ export class BatchEd25519Signer {
 
     result.remainingHeaders = headers;
 
-    result.data= headers.reduce((data, header) => {
+    result.data = headers.reduce((data, header) => {
       data.push({
         signature: formatHex(
           buffer.subarray(header.sigOffset, header.sigOffset + SIGNATURE_BYTES)
@@ -230,7 +227,7 @@ export class BatchEd25519Signer {
           .toString("utf8"),
       });
 
-      return data
+      return data;
     }, []);
 
     return result;

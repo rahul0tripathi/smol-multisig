@@ -125,7 +125,7 @@ jobs:
           
           # Verify Solana installation
           solana --version
-          solana-keygen new --no-bip39-passphrase
+          solana-keygen new --no-bip39-passphrase --force
           solana config set --url localhost
           
         

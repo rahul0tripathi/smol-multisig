@@ -8,10 +8,11 @@ const SIGNATURE_LEN: usize = 64;
 const RECOVERY_ID_LEN: usize = 1;
 const ETH_ADDRESS_LEN: usize = 20;
 const OFFSET_METADATA_SIZE: usize = 11;
-const INSTRUCTION_INFO_SIZE: usize = 1; // Just the number of signatures
+const INSTRUCTION_INFO_SIZE: usize = 1;
 const MESSAGE_LEN: usize = 32;
 
 pub fn verify(ix: &Instruction, signers: Vec<[u8; 20]>, multi_sig_hash: [u8; 32]) -> Result<()> {
+    // ref to the layout: https://docs.anza.xyz/runtime/programs#secp256k1-program
     if ix.program_id != SECP256K1_ID || !ix.accounts.is_empty() {
         return Err(MultiSigErrors::InvalidSecp256k1Instruction.into());
     }

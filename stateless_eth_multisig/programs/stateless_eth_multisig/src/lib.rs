@@ -34,10 +34,11 @@ pub mod stateless_eth_multisig {
             ctx.program_id,
         );
 
-        // Initialize the configuration account
+        // initialize the configuration account
         ctx.accounts.config.nonce = 0;
         ctx.accounts.config.owners = signers;
         ctx.accounts.config.threshold = threshold;
+        // this can always be computed, just storing it here
         ctx.accounts.config.multisig_pda = multisig_pda;
         ctx.accounts.config.pda_bump = bump;
 
@@ -69,7 +70,7 @@ pub mod stateless_eth_multisig {
 
         msg!("getting instruction");
 
-        // the instruction before execute should always be the call to the Ed25519 precompile
+        // the instruction before execute should always be the call to the secp256k1 precompile
         let ix: Instruction = get_instruction_relative(-1, &ctx.accounts.ix_sysvar)?;
 
         let expected_hash = create_multi_sig_tx_hash(

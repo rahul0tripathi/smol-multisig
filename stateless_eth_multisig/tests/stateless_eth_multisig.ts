@@ -69,7 +69,6 @@ describe("secp256k1-multisig", () => {
   const program = anchor.workspace
     .StatelessEthMultisig as Program<StatelessEthMultisig>;
 
-  // Generate Ethereum wallets for testing
   const owner1 = Wallet.createRandom();
   const owner2 = Wallet.createRandom();
   const owner3 = Wallet.createRandom();
@@ -106,13 +105,10 @@ describe("secp256k1-multisig", () => {
       .rpc();
 
     const account = await program.account.multiSigConfig.fetch(configAccount);
-    console.log(account.owners);
     const buffersToArrays = (buffers) => buffers.map((buf) => Array.from(buf));
-
     expect(buffersToArrays(account.owners)).to.deep.equal(
       buffersToArrays(owners)
     );
-
     expect(account.threshold).to.equal(threshold);
     expect(account.nonce.toString()).to.equal("0");
     expect(account.multisigPda.toString()).to.equal(multisigPda.toString());
@@ -419,6 +415,53 @@ describe("secp256k1-multisig", () => {
       }
     });
 
+    it("rejects missing program instruction", async () => {
+      const { transferIx, executeParams, txHash } = await createTransferTx(
+        safeTransferAmount / 2
+      );
+
+      const secp256k1Ix =
+        await BatchSecp256k1Signer.signAndCreateVerifySignaturesInstruction([
+          {
+            privateKey: Buffer.from(owner2.privateKey.slice(2), "hex"),
+            message: txHash,
+          },
+          {
+            privateKey: Buffer.from(owner3.privateKey.slice(2), "hex"),
+            message: txHash,
+          },
+        ]);
+
+      const remainingAccounts = [
+        ...executeParams.accounts,
+        {
+          pubkey: SystemProgram.programId,
+          isSigner: false,
+          isWritable: false,
+        },
+      ];
+
+      try {
+        await program.methods
+          .execute(executeParams)
+          .accounts({
+            config: configAccount,
+            multisigPda: multisigPda,
+          })
+          .remainingAccounts(remainingAccounts)
+          .signers([])
+          .rpc();
+
+        expect.fail("should have rejected missing program instruction");
+      } catch (e) {
+        const error = e as anchor.AnchorError;
+        console.log("anchor error:", {
+          logs: error.logs,
+          error: error.error,
+        });
+        expect(e.toString()).to.include("InvalidArgument");
+      }
+    });
     it("prevents nonce replay", async () => {
       const { transferIx, executeParams, txHash } = await createTransferTx(
         safeTransferAmount / 2

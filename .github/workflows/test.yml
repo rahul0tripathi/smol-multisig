@@ -1,8 +1,8 @@
-name: Anchor Tests
+name: Anchor Test
 
 on:
   push:
-    branches: [master]
+    branches: [main]
     paths:
       - 'tokens/**'
       - 'stateless_multisig/**'
@@ -10,7 +10,7 @@ on:
       - 'Cargo.lock'
       - 'Cargo.toml'
   pull_request:
-    branches: [master]
+    branches: [main]
     paths:
       - 'tokens/**'
       - 'stateless_multisig/**'
@@ -23,220 +23,21 @@ env:
   SOLANA_CLI_VERSION: 2.0.25
   NODE_VERSION: 18.14.2
   ANCHOR_CLI_VERSION: 0.30.1
-  CACHE_KEY_PREFIX: v1
 
 jobs:
-  setup-environment:
+  cli_build:
     runs-on: ubuntu-latest
-    outputs:
-      cache-hit: ${{ steps.system-deps-cache.outputs.cache-hit }}
-    
     steps:
-      - name: System Dependencies Cache
-        id: system-deps-cache
-        uses: actions/cache@v3
-        with:
-          path: |
-            /var/cache/apt/archives
-            /var/lib/apt/lists
-          key: ${{ env.CACHE_KEY_PREFIX }}-system-deps-${{ runner.os }}
-
-      - name: Install System Dependencies
-        if: steps.system-deps-cache.outputs.cache-hit != 'true'
+      - uses: actions/checkout@v2
+      - uses: ./.github/actions/setup-solana
+      - uses: ./.github/actions/setup-dep
+      - uses: ./.github/actions/setup-anchor
+      - name: Run Anchor Tests
         run: |
-          sudo apt-get update
-          sudo apt-get install -y pkg-config build-essential libudev-dev
-          
-  test_matrix:
-    needs: setup-environment
-    strategy:
-      fail-fast: false
-      matrix:
-        project: [tokens, stateless_multisig]
-    
-    name: Test ${{ matrix.project }}
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 1
-      
-      # Setup Node.js with caching
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      # Yarn cache
-      - name: Get yarn cache directory path
-        id: yarn-cache-dir-path
-        run: echo "dir=$(yarn cache dir)" >> $GITHUB_OUTPUT
-
-      - name: Cache Yarn dependencies
-        uses: actions/cache@v3
-        id: yarn-cache
-        with:
-          path: ${{ steps.yarn-cache-dir-path.outputs.dir }}
-          key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock', '**/package.json') }}
-          restore-keys: |
-            ${{ runner.os }}-yarn-
-
-      # Install and cache Anchor CLI
-      - name: Cache Anchor CLI
-        id: cache-anchor-cli
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.npm/global
-            ~/.cargo/bin/anchor
-          key: ${{ env.CACHE_KEY_PREFIX }}-anchor-cli-${{ runner.os }}-${{ env.ANCHOR_CLI_VERSION }}
-
-      - name: Install Anchor CLI
-        if: steps.cache-anchor-cli.outputs.cache-hit != 'true'
-        run: npm install -g @coral-xyz/anchor-cli@${{ env.ANCHOR_CLI_VERSION }} yarn
-
-      # Setup and cache Solana
-      - name: Cache Solana
-        id: cache-solana
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cache/solana/
-            ~/.local/share/solana/
-            ~/.config/solana/
-          key: ${{ env.CACHE_KEY_PREFIX }}-solana-${{ runner.os }}-${{ env.SOLANA_CLI_VERSION }}
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: stable
-          components: rustfmt, clippy
-
-      - name: Install Solana and Tools
-        if: steps.cache-solana.outputs.cache-hit != 'true'
-        run: |
-          # Install Solana
-          sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
-          source $HOME/.profile
-          export PATH="/home/runner/.local/share/solana/install/active_release/bin:$PATH"
-          echo "/home/runner/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
-          
-          # Install Anchor CLI
-          cargo install --git https://github.com/coral-xyz/anchor --tag v${{ env.ANCHOR_CLI_VERSION }} anchor-cli
-
-      # Cache Rust/Cargo dependencies
-      - name: Cache Cargo dependencies
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            ~/.cargo/bin
-            target
-            ${{ matrix.project }}/target
-          key: ${{ env.CACHE_KEY_PREFIX }}-cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml', '${{ matrix.project }}/programs/**/Cargo.toml') }}
-          restore-keys: |
-            ${{ env.CACHE_KEY_PREFIX }}-cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
-            ${{ env.CACHE_KEY_PREFIX }}-cargo-${{ runner.os }}-
-
-      # Project specific steps
-      - name: Install project dependencies
-        working-directory: ${{ matrix.project }}
-        run: yarn install --frozen-lockfile
-
-      - name: Build project
-        working-directory: ${{ matrix.project }}
-        run: |
-          # Ensure proper permissions
-          sudo chmod -R a+w .
-          
-          # Clear any previous build artifacts
-          rm -rf target/
-          
-          # Attempt build
-          anchor build || {
-            echo "Build failed, attempting recovery steps..."
-            
-            # Force install sbf tools
-            cargo build-sbf --force-tools-install
-            
-            # Clear Solana cache and retry
-            rm -rf ~/.cache/solana/*
-            
-            # Retry build
-            anchor build
-          }
-        env:
-          RUST_BACKTRACE: 1
-          RUST_LOG: debug
-          ANCHOR_WALLET: ~/.config/solana/id.json
-
-      - name: Run Anchor tests
-        working-directory: ${{ matrix.project }}
-        run: |
-          # Ensure Node.js dependencies are installed
-          yarn install --frozen-lockfile
-          
-          # Run tests with recovery options
-          anchor test || {
-            echo "Tests failed, attempting recovery steps..."
-            
-            # Clear anchor localnet if running
-            anchor localnet kill
-            
-            # Clear any stale test artifacts
-            rm -rf test-ledger/
-            
-            # Retry tests
-            anchor test
-          }
-        env:
-          RUST_BACKTRACE: 1
-          RUST_LOG: debug
-          ANCHOR_WALLET: ~/.config/solana/id.json
-
-      - name: Run Anchor tests
-        working-directory: ${{ matrix.project }}
-        run: |
+          cd tokens
+          yarn
           anchor test
-        env:
-          RUST_BACKTRACE: 1
-          RUST_LOG: debug
-
-      # Artifact collection
-      - name: Upload build artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.project }}-artifacts
-          path: |
-            ${{ matrix.project }}/target/deploy/
-            ${{ matrix.project }}/target/debug/
-            ${{ matrix.project }}/tests/*.log
-          retention-days: 7
-          compression-level: 9
-
-      - name: Upload test logs
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.project }}-test-logs
-          path: |
-            ${{ matrix.project }}/target/deploy/*.log
-            ${{ matrix.project }}/tests/*.log
-          retention-days: 3
-          compression-level: 9
-
-  cleanup:
-    needs: test_matrix
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check test results
-        run: |
-          if [ "${{ needs.test_matrix.result }}" != "success" ]; then
-            echo "Tests failed. Check the artifacts for more details."
-            exit 1
-          fi
+          cd ../stateless_multisig
+          yarn
+          anchor test
+        shell: bash

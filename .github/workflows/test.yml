@@ -131,25 +131,22 @@ jobs:
           # Install all required build tools
           cargo install cargo-build-sbf cargo-build-bpf
           
-          # Install Anchor directly from GitHub
-      - name: Install Anchor CLI
-        if: steps.cache-anchor-cli.outputs.cache-hit != 'true'
+          - name: Install Solana Tools
+        if: steps.cache-solana.outputs.cache-hit != 'true'
         run: |
-          # Install specific version of Anchor CLI
+          # Install Solana
+          sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
+          source $HOME/.profile
+          export PATH="/home/runner/.local/share/solana/install/active_release/bin:$PATH"
+          echo "/home/runner/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+          
+          # Verify Solana installation and setup
+          solana --version
+          solana-keygen new --no-bip39-passphrase
+          solana config set --url localhost
+          
+          # Install Anchor CLI
           cargo install --git https://github.com/coral-xyz/anchor --tag v${{ env.ANCHOR_CLI_VERSION }} anchor-cli
-          
-          # Verify installation
-          anchor --version
-          
-          # Force install sbf tools to prevent directory errors
-          cargo build-sbf --force-tools-install
-          
-          # Clear Solana cache if needed (backup solution)
-          if [ $? -ne 0 ]; then
-            echo "Initial build-sbf failed, clearing Solana cache and retrying..."
-            rm -rf ~/.cache/solana/*
-            cargo build-sbf --force-tools-install
-          fi
 
       # Cache Rust/Cargo dependencies
       - name: Cache Cargo dependencies

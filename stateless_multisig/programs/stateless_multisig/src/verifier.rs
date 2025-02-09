@@ -11,6 +11,7 @@ const INSTRUCTION_INFO_SIZE: usize = 2;
 const KECCAK_LEN: usize = 32;
 
 pub fn verify(ix: &Instruction, signers: Vec<Pubkey>, multi_sig_hash: [u8; 32]) -> Result<()> {
+    // ref to: https://docs.anza.xyz/runtime/programs#ed25519-program
     if ix.program_id != ED25519_ID || ix.accounts.len() != 0 {
         return Err(MultiSigErrors::InvalidEd25519Instruction.into());
     }

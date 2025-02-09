@@ -153,7 +153,7 @@ jobs:
       # Artifact collection
       - name: Upload build artifacts
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.project }}-artifacts
           path: |
@@ -161,16 +161,18 @@ jobs:
             ${{ matrix.project }}/target/debug/
             ${{ matrix.project }}/tests/*.log
           retention-days: 7
+          compression-level: 9
 
       - name: Upload test logs
         if: failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.project }}-test-logs
           path: |
             ${{ matrix.project }}/target/deploy/*.log
             ${{ matrix.project }}/tests/*.log
           retention-days: 3
+          compression-level: 9
 
   cleanup:
     needs: test_matrix

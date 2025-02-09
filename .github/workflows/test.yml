@@ -128,8 +128,7 @@ jobs:
           solana-keygen new --no-bip39-passphrase
           solana config set --url localhost
           
-          # Install all required build tools
-          cargo install cargo-build-sbf cargo-build-bpf
+        
           # Install Solana
           sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
           source $HOME/.profile

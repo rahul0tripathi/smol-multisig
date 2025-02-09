@@ -45,11 +45,7 @@ jobs:
         if: steps.system-deps-cache.outputs.cache-hit != 'true'
         run: |
           sudo apt-get update
-          sudo apt-get install -y pkg-config build-essential libudev-dev libssl-dev clang gcc-multilib g++-multilib cmake make
-          
-          # Give proper permissions
-          sudo chmod -R a+w /usr/local/cargo/
-          sudo chmod -R a+w ~/.cargo/
+          sudo apt-get install -y pkg-config build-essential libudev-dev
           
   test_matrix:
     needs: setup-environment

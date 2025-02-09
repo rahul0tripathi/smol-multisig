@@ -123,23 +123,6 @@ jobs:
           export PATH="/home/runner/.local/share/solana/install/active_release/bin:$PATH"
           echo "/home/runner/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
           
-          # Verify Solana installation
-          solana --version
-          solana-keygen new --no-bip39-passphrase --force
-          solana config set --url localhost
-          
-        
-          # Install Solana
-          sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
-          source $HOME/.profile
-          export PATH="/home/runner/.local/share/solana/install/active_release/bin:$PATH"
-          echo "/home/runner/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
-          
-          # Verify Solana installation and setup
-          solana --version
-          solana-keygen new --no-bip39-passphrase
-          solana config set --url localhost
-          
           # Install Anchor CLI
           cargo install --git https://github.com/coral-xyz/anchor --tag v${{ env.ANCHOR_CLI_VERSION }} anchor-cli
 

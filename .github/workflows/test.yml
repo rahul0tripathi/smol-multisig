@@ -130,10 +130,6 @@ jobs:
           
           # Install all required build tools
           cargo install cargo-build-sbf cargo-build-bpf
-          
-          - name: Install Solana Tools
-        if: steps.cache-solana.outputs.cache-hit != 'true'
-        run: |
           # Install Solana
           sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
           source $HOME/.profile

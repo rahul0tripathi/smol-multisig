@@ -20,4 +20,6 @@ pub enum MultiSigErrors {
     DuplicateSigner,
     #[msg("signers below threshold")]
     ThresholdNotMet,
+    #[msg("invalid signer")]
+    InvalidSigner,
 }

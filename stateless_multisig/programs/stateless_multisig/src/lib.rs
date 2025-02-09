@@ -61,6 +61,14 @@ pub mod stateless_multisig {
             errors::MultiSigErrors::ErrNonceTooOld
         );
 
+        // verify all signers are owners
+        for signer in params.signers.iter() {
+            require!(
+                ctx.accounts.config.owners.contains(signer),
+                errors::MultiSigErrors::InvalidSigner
+            );
+        }
+
         msg!("getting instruction");
 
         // the instruction before execute should always be the call to the Ed25519 precompile
@@ -198,9 +206,6 @@ pub struct CreateMultiSigCtx<'info> {
 
 #[derive(Accounts)]
 pub struct ExecuteMultiSigTxCtx<'info> {
-    #[account(mut)]
-    pub payer: Signer<'info>,
-
     #[account(mut)]
     pub config: Account<'info, MultiSigConfig>,
 

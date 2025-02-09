@@ -5,7 +5,7 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-secp256k1_multisig = "FELadcrJKJ6MuDZPRb4Q2vcY82MnkZQ5WdqVH8Mv2Wcd"
+stateless_eth_multisig = "EPSKHqnzSK1pQ5pZbkdRi74zU38BK4Bauffi9hyJeQXr"
 
 [registry]
 url = "https://api.apr.dev"

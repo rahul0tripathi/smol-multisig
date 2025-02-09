@@ -1,12 +1,12 @@
 [package]
-name = "secp256k1-multisig"
+name = "stateless_eth_multisig"
 version = "0.1.0"
 description = "Created with Anchor"
 edition = "2021"
 
 [lib]
 crate-type = ["cdylib", "lib"]
-name = "secp256k1_multisig"
+name = "stateless_eth_multisig"
 
 [features]
 default = []

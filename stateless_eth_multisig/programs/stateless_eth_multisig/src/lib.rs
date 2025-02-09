@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+
 use anchor_lang::solana_program;
 use anchor_lang::solana_program::instruction::Instruction;
 use anchor_lang::solana_program::keccak;
@@ -6,16 +7,15 @@ use anchor_lang::solana_program::sysvar::instructions::{get_instruction_relative
 
 pub mod errors;
 pub mod verifier;
-
-declare_id!("8EKj21isKqgxYfMQybmGWHRCn62F5thMxeaHy3A93G6L");
+declare_id!("EPSKHqnzSK1pQ5pZbkdRi74zU38BK4Bauffi9hyJeQXr");
 
 #[program]
-pub mod stateless_multisig {
+pub mod stateless_eth_multisig {
     use super::*;
 
     pub fn create(
         ctx: Context<CreateMultiSigCtx>,
-        signers: Vec<Pubkey>,
+        signers: Vec<[u8; 20]>,
         threshold: u8,
     ) -> Result<()> {
         unique_signers(&signers)?;
@@ -34,10 +34,11 @@ pub mod stateless_multisig {
             ctx.program_id,
         );
 
-        // Initialize the configuration account
+        // initialize the configuration account
         ctx.accounts.config.nonce = 0;
         ctx.accounts.config.owners = signers;
         ctx.accounts.config.threshold = threshold;
+        // this can always be computed, just storing it here
         ctx.accounts.config.multisig_pda = multisig_pda;
         ctx.accounts.config.pda_bump = bump;
 
@@ -69,7 +70,7 @@ pub mod stateless_multisig {
 
         msg!("getting instruction");
 
-        // the instruction before execute should always be the call to the Ed25519 precompile
+        // the instruction before execute should always be the call to the secp256k1 precompile
         let ix: Instruction = get_instruction_relative(-1, &ctx.accounts.ix_sysvar)?;
 
         let expected_hash = create_multi_sig_tx_hash(
@@ -118,8 +119,7 @@ pub mod stateless_multisig {
         Ok(())
     }
 }
-
-fn unique_signers(signers: &[Pubkey]) -> Result<()> {
+fn unique_signers(signers: &[[u8; 20]]) -> Result<()> {
     for (i, signer) in signers.iter().enumerate() {
         require!(
             !signers.iter().skip(i + 1).any(|item| item == signer),
@@ -167,13 +167,13 @@ pub struct ExecuteMultiSigTx {
     pub program_id: Pubkey,
     pub accounts: Vec<TransactionAccount>,
     pub data: Vec<u8>,
-    pub signers: Vec<Pubkey>,
+    pub signers: Vec<[u8; 20]>,
     pub nonce: u64,
 }
 
 #[account]
 pub struct MultiSigConfig {
-    pub owners: Vec<Pubkey>,
+    pub owners: Vec<[u8; 20]>,
     pub threshold: u8,
     pub nonce: u64,
     pub multisig_pda: Pubkey, // The actual multisig PDA that will sign transactions
@@ -181,13 +181,13 @@ pub struct MultiSigConfig {
 }
 
 #[derive(Accounts)]
-#[instruction(signers: Vec<Pubkey>, threshold: u8)]
+#[instruction(signers: Vec<[u8; 20]>, threshold: u8)]
 pub struct CreateMultiSigCtx<'info> {
     #[account(
         init,
         payer = payer,
         space = 8 + // discriminator
-            4 + (32 * signers.len()) + // owners vec
+            4 + (20 * signers.len()) + // owners vec
             1 + // threshold
             8 + // nonce
             32 + // multisig_pda

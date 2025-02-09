@@ -2,7 +2,7 @@ name: Anchor Tests
 
 on:
   push:
-    branches: [main]
+    branches: [master]
     paths:
       - 'tokens/**'
       - 'stateless_multisig/**'
@@ -10,7 +10,7 @@ on:
       - 'Cargo.lock'
       - 'Cargo.toml'
   pull_request:
-    branches: [main]
+    branches: [master]
     paths:
       - 'tokens/**'
       - 'stateless_multisig/**'
@@ -45,7 +45,11 @@ jobs:
         if: steps.system-deps-cache.outputs.cache-hit != 'true'
         run: |
           sudo apt-get update
-          sudo apt-get install -y pkg-config build-essential libudev-dev
+          sudo apt-get install -y pkg-config build-essential libudev-dev libssl-dev clang gcc-multilib g++-multilib cmake make
+          
+          # Give proper permissions
+          sudo chmod -R a+w /usr/local/cargo/
+          sudo chmod -R a+w ~/.cargo/
           
   test_matrix:
     needs: setup-environment
@@ -108,15 +112,48 @@ jobs:
             ~/.config/solana/
           key: ${{ env.CACHE_KEY_PREFIX }}-solana-${{ runner.os }}-${{ env.SOLANA_CLI_VERSION }}
 
-      - name: Install Solana
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+
+      - name: Install Solana and Tools
         if: steps.cache-solana.outputs.cache-hit != 'true'
         run: |
+          # Install Solana
           sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
           source $HOME/.profile
           export PATH="/home/runner/.local/share/solana/install/active_release/bin:$PATH"
+          echo "/home/runner/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+          
+          # Verify Solana installation
           solana --version
           solana-keygen new --no-bip39-passphrase
           solana config set --url localhost
+          
+          # Install all required build tools
+          cargo install cargo-build-sbf cargo-build-bpf
+          
+          # Install Anchor directly from GitHub
+      - name: Install Anchor CLI
+        if: steps.cache-anchor-cli.outputs.cache-hit != 'true'
+        run: |
+          # Install specific version of Anchor CLI
+          cargo install --git https://github.com/coral-xyz/anchor --tag v${{ env.ANCHOR_CLI_VERSION }} anchor-cli
+          
+          # Verify installation
+          anchor --version
+          
+          # Force install sbf tools to prevent directory errors
+          cargo build-sbf --force-tools-install
+          
+          # Clear Solana cache if needed (backup solution)
+          if [ $? -ne 0 ]; then
+            echo "Initial build-sbf failed, clearing Solana cache and retrying..."
+            rm -rf ~/.cache/solana/*
+            cargo build-sbf --force-tools-install
+          fi
 
       # Cache Rust/Cargo dependencies
       - name: Cache Cargo dependencies
@@ -125,6 +162,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
+            ~/.cargo/bin
             target
             ${{ matrix.project }}/target
           key: ${{ env.CACHE_KEY_PREFIX }}-cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml', '${{ matrix.project }}/programs/**/Cargo.toml') }}
@@ -140,9 +178,53 @@ jobs:
       - name: Build project
         working-directory: ${{ matrix.project }}
         run: |
-          anchor build
+          # Ensure proper permissions
+          sudo chmod -R a+w .
+          
+          # Clear any previous build artifacts
+          rm -rf target/
+          
+          # Attempt build
+          anchor build || {
+            echo "Build failed, attempting recovery steps..."
+            
+            # Force install sbf tools
+            cargo build-sbf --force-tools-install
+            
+            # Clear Solana cache and retry
+            rm -rf ~/.cache/solana/*
+            
+            # Retry build
+            anchor build
+          }
         env:
           RUST_BACKTRACE: 1
+          RUST_LOG: debug
+          ANCHOR_WALLET: ~/.config/solana/id.json
+
+      - name: Run Anchor tests
+        working-directory: ${{ matrix.project }}
+        run: |
+          # Ensure Node.js dependencies are installed
+          yarn install --frozen-lockfile
+          
+          # Run tests with recovery options
+          anchor test || {
+            echo "Tests failed, attempting recovery steps..."
+            
+            # Clear anchor localnet if running
+            anchor localnet kill
+            
+            # Clear any stale test artifacts
+            rm -rf test-ledger/
+            
+            # Retry tests
+            anchor test
+          }
+        env:
+          RUST_BACKTRACE: 1
+          RUST_LOG: debug
+          ANCHOR_WALLET: ~/.config/solana/id.json
 
       - name: Run Anchor tests
         working-directory: ${{ matrix.project }}
